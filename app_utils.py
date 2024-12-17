@@ -28,7 +28,7 @@ class TranscribeRequest(BaseModel):
     id: Optional[str] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "media_url": "https://example.com/media.mp4",
                 "output": "transcript",

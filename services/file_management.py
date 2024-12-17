@@ -3,37 +3,34 @@ import uuid
 import requests
 from urllib.parse import urlparse, parse_qs
 
-def download_file(url, storage_path='../tmp/'):
-    # Parse the URL to extract the file ID from the query parameters
-    parsed_url = urlparse(url)
-    print("parsed_url", parsed_url)
-    query_params = parse_qs(parsed_url.query)
-    
-    # Use the 'id' parameter as the filename if it exists
-    file_id = str(uuid.uuid4())
-    
-    #if not file_id:
-    #    raise ValueError("Invalid URL: 'id' parameter not found in the URL")
-    
-    # Ensure the storage directory exists
-    if not os.path.exists(storage_path):
-        os.makedirs(storage_path)
-    
-    # Use the file ID as the filename and save it in the specified storage path
-    local_filename = os.path.join(storage_path, f"{file_id}.mp4")  # Assuming mp4; adjust extension if needed
-    
-    # Download the file
-    response = requests.get(url, stream=True)
-    response.raise_for_status()
-    
-    with open(local_filename, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-        # Print the full local file path
-    full_path = os.path.abspath(local_filename)
-    print("Full local filename path:", full_path)
-    
-    return local_filename
+def download_file(url: str, base_path: str) -> str:
+    """Download file from URL and return local path"""
+    try:
+        # Create directory if it doesn't exist
+        os.makedirs(base_path, exist_ok=True)
+        
+        # Get file extension from URL
+        parsed_url = urlparse(url)
+        file_ext = os.path.splitext(parsed_url.path)[1]
+        if not file_ext:
+            file_ext = '.mp4' if 'video' in url else '.jpg'
+            
+        # Create output path
+        output_path = os.path.join(base_path, f"file{file_ext}")
+        
+        # Download file
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        with open(output_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"File download failed: {str(e)}")
+        raise Exception(f"File download failed: {str(e)}")
 
 
 def delete_old_files():

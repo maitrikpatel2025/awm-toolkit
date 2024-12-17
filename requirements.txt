@@ -17,3 +17,5 @@ psutil
 Pillow
 uvicorn
 aiohttp
+wget
+python-multipart
