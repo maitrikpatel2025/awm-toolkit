@@ -186,3 +186,9 @@ gunicorn --bind 0.0.0.0:8080 \
 
 # Run the shell script
 CMD ["/app/run_gunicorn.sh"]
+
+# Install wkhtmltopdf
+RUN apt-get update && \
+    apt-get install -y wkhtmltopdf && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*

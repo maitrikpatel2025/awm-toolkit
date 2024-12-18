@@ -29,7 +29,6 @@ async def remove_background(
             process_background_removal,
             str(background_removal_request.media_url),
             background_removal_request.output_format.value,
-            background_removal_request.webhook_url
         )
         logger.info(f"Job {job_id}: Background removal process completed successfully")
 
