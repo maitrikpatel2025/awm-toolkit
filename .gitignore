@@ -99,3 +99,5 @@ dmypy.json
 
 # Run server
 run.sh
+
+keys.db
