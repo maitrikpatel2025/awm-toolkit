@@ -1,7 +1,7 @@
-from fastapi import Header, HTTPException, Request, Depends
+from fastapi import Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from typing import Dict, Any, Optional, Callable
-from pydantic import BaseModel, HttpUrl
+from typing import Callable
+
 from enum import Enum
 from queue import Queue
 import threading
@@ -12,32 +12,6 @@ from services.webhook import send_webhook
 from version import BUILD_NUMBER
 from functools import wraps
 import asyncio
-
-# Pydantic base models
-class OutputType(str, Enum):
-    transcript = "transcript"
-    srt = "srt"
-    vtt = "vtt"
-    ass = "ass"
-
-class TranscribeRequest(BaseModel):
-    media_url: HttpUrl
-    output: Optional[OutputType] = OutputType.transcript
-    webhook_url: Optional[HttpUrl] = None
-    max_chars: Optional[int] = 56
-    id: Optional[str] = None
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "media_url": "https://example.com/media.mp4",
-                "output": "transcript",
-                "webhook_url": "https://example.com/webhook",
-                "max_chars": 56,
-                "id": "123"
-            }
-        }
-
 # Authentication dependency
 async def verify_api_key(x_api_key: str = Header(..., description="API Key for authentication")):
     if x_api_key != os.environ.get('API_KEY'):
@@ -113,7 +87,13 @@ def queue_task(bypass_queue: bool = False):
         @wraps(func)
         async def wrapper(request: Request, *args, **kwargs):
             job_id = str(uuid.uuid4())
-            data = kwargs.get('transcribe_request').dict() if 'transcribe_request' in kwargs else {}
+            request.state.job_id = job_id
+            data = {}
+            for key, value in kwargs.items():
+                if hasattr(value, 'dict') and callable(value.dict):
+                    data = value.dict()
+                    break
+          
             pid = os.getpid()
             start_time = time.time()
 

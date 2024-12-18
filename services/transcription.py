@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Set the default local storage directory
-STORAGE_PATH = "../test_data"
+STORAGE_PATH ="/tmp/"
 def process_transcription(media_url, output_type, max_chars=56, language=None):
     logger.info(f"Starting transcription for media URL: {media_url} with output type: {output_type}")
     input_filename = None

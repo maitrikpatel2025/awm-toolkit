@@ -15,6 +15,7 @@ google-api-python-client
 google-cloud-storage
 psutil
 Pillow
+boto3
 uvicorn
 aiohttp
 wget
