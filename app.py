@@ -14,13 +14,14 @@ app = FastAPI(
 )
 
 # Import and register routers
-from routes import authenticate, transcribe_media, combine_audios, background_removal
+from routes import authenticate, transcribe_media, combine_audios, background_removal, audio_crop
 
 
 app.include_router(authenticate.router)
 app.include_router(transcribe_media.router)
 app.include_router(combine_audios.router)
 app.include_router(background_removal.router)
+app.include_router(audio_crop.router)
 
 if __name__ == "__main__":
     import uvicorn

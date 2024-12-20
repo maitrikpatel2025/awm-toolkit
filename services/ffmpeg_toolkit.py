@@ -2,9 +2,11 @@ import os
 import ffmpeg
 import requests
 from services.file_management import download_file
+import logging
 
 # Set the default local storage directory
 STORAGE_PATH = "/tmp/"
+logger = logging.getLogger(__name__)
 
 def process_conversion(media_url, job_id, bitrate='128k', webhook_url=None):
     """Convert media to MP3 format with specified bitrate."""
@@ -121,3 +123,38 @@ def process_audio_combination(media_urls, job_id, webhook_url=None):
     except Exception as e:
         print(f"Audio combination failed: {str(e)}")
         raise
+
+def crop_audio(input_file: str, output_file: str, start_time: str, end_time: str) -> bool:
+    """
+    Crop audio file using start and end timestamps.
+    
+    Args:
+        input_file (str): Path to input audio file
+        output_file (str): Path to save output audio file
+        start_time (str): Start time in format HH:MM:SS or MM:SS
+        end_time (str): End time in format HH:MM:SS or MM:SS
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        import ffmpeg
+        
+        # Convert time format if needed (MM:SS to HH:MM:SS)
+        if len(start_time.split(':')) == 2:
+            start_time = f"00:{start_time}"
+        if len(end_time.split(':')) == 2:
+            end_time = f"00:{end_time}"
+            
+        # Build ffmpeg command
+        stream = ffmpeg.input(input_file, ss=start_time, t=end_time)
+        stream = ffmpeg.output(stream, output_file, acodec='copy')
+        
+        # Run the command
+        ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error cropping audio: {str(e)}")
+        return False
