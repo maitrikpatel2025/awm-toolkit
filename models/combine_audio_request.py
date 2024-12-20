@@ -4,7 +4,7 @@ from pydantic import BaseModel, HttpUrl, AnyUrl
 # ... existing OutputType enum ...
 
 class AudioUrl(BaseModel):
-    audio_url: AnyUrl
+    audio_url: HttpUrl
 
 class CombineAudioRequest(BaseModel):
     audio_urls: Optional[List[AudioUrl]] = None

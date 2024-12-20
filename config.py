@@ -1,9 +1,22 @@
 import os
+from dotenv import load_dotenv
 
-# Retrieve the API key from environment variables
-API_KEY = os.environ.get('API_KEY')
-if not API_KEY:
-    raise ValueError("API_KEY environment variable is not set")
+# Load environment variables from .env file
+load_dotenv()
+
+# Database configuration
+DB_PATH = os.getenv('DB_PATH', '')
+
+# Secret key for JWT
+SECRET_KEY = os.getenv('SECRET_KEY', '')
+
+# Email configuration
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+MAIL_FROM = os.getenv("MAIL_FROM")
+MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+MAIL_SERVER = os.getenv("MAIL_SERVER")
+
 
 # GCP environment variables
 GCP_SA_CREDENTIALS = os.environ.get('GCP_SA_CREDENTIALS', '')

@@ -3,9 +3,11 @@ import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from fastapi import HTTPException
+from config import DB_PATH
+import uuid
 
 class KeyManager:
-    def __init__(self, db_path: str = "keys.db"):
+    def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._init_db()
 
@@ -14,36 +16,79 @@ class KeyManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # API Keys table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS api_keys (
-                key TEXT PRIMARY KEY,
-                created_at TIMESTAMP,
-                expires_at TIMESTAMP,
-                description TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                rate_limit INTEGER DEFAULT 100
-            )
-        ''')
-        
-        # Usage tracking table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS usage_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                api_key TEXT,
-                endpoint TEXT,
-                timestamp TIMESTAMP,
-                FOREIGN KEY (api_key) REFERENCES api_keys (key)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
+        try:
+            # Create temporary table for new schema
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS api_keys_new (
+                    key_id TEXT PRIMARY KEY,
+                    key TEXT UNIQUE,
+                    key_name TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    created_at TIMESTAMP,
+                    expires_at TIMESTAMP,
+                    description TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            # Check if old table exists
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'")
+            if cursor.fetchone():
+                # Copy data from old table to new table with default values
+                cursor.execute("""
+                    INSERT INTO api_keys_new (
+                        key_id, key, key_name, user_id, created_at, expires_at, 
+                        description, is_active
+                    )
+                    SELECT 
+                        hex(randomblob(16)) as key_id,
+                        key,
+                        'Legacy Key' as key_name,
+                        'system' as user_id,
+                        created_at,
+                        expires_at,
+                        description,
+                        COALESCE(is_active, 1)
+                    FROM api_keys
+                """)
+                
+                # Drop old table
+                cursor.execute("DROP TABLE api_keys")
+                
+                # Rename new table to api_keys
+                cursor.execute("ALTER TABLE api_keys_new RENAME TO api_keys")
+            else:
+                # If no old table exists, just rename the new table
+                cursor.execute("ALTER TABLE api_keys_new RENAME TO api_keys")
+            
+            conn.commit()
+        except Exception as e:
+            print(f"Migration error: {str(e)}")
+            conn.rollback()
+        finally:
+            conn.close()
 
-    def generate_key(self, description: Optional[str] = None, 
-                    expires_in_days: Optional[int] = 365,
-                    rate_limit: int = 100) -> str:
+    def verify_user_key(self, key_id: str, user_id: str) -> bool:
+        """Verify if the key belongs to the user"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """SELECT 1 FROM api_keys 
+               WHERE key_id = ? AND user_id = ?""",
+            (key_id, user_id)
+        )
+        result = cursor.fetchone() is not None
+        conn.close()
+        
+        return result
+
+    def generate_key(self, user_id: str, key_name: str, 
+                    description: Optional[str] = None,
+                    expires_in_days: Optional[int] = 365) -> Dict:
         """Generate a new API key and store it in the database"""
+        key_id = str(uuid.uuid4())
         api_key = secrets.token_urlsafe(32)
         expires_at = datetime.utcnow() + timedelta(days=expires_in_days) if expires_in_days else None
         
@@ -52,23 +97,100 @@ class KeyManager:
         
         cursor.execute(
             """INSERT INTO api_keys 
-               (key, created_at, expires_at, description, rate_limit) 
-               VALUES (?, ?, ?, ?, ?)""",
-            (api_key, datetime.utcnow(), expires_at, description, rate_limit)
+               (key_id, key, key_name, user_id, created_at, expires_at, description) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (key_id, api_key, key_name, user_id, datetime.utcnow(), expires_at, description)
         )
         
         conn.commit()
         conn.close()
-        return api_key
+        
+        return {
+            "key_id": key_id,
+            "api_key": api_key,
+            "key_name": key_name
+        }
 
-    def revoke_key(self, api_key: str) -> bool:
-        """Revoke an API key by setting is_active to False"""
+    def get_key_info(self, key_id: str, user_id: str) -> Dict:
+        """Get detailed information about an API key"""
+        # First verify the key belongs to this user
+        if not self.verify_user_key(key_id, user_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No API key found with ID: {key_id}"
+            )
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute(
-            "UPDATE api_keys SET is_active = 0 WHERE key = ?",
-            (api_key,)
+            """SELECT key_id, key, key_name, created_at, expires_at, description, 
+                      is_active
+               FROM api_keys WHERE key_id = ?""",
+            (key_id,)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="API key not found")
+            
+        key_id, key, key_name, created_at, expires_at, description, is_active = result
+        
+        return {
+            "key_id": key_id,
+            "key": key,
+            "key_name": key_name,
+            "created_at": created_at,
+            "expires_at": expires_at,
+            "description": description,
+            "is_active": bool(is_active)
+        }
+
+    def get_user_keys(self, user_id: str) -> List[Dict]:
+        """Get all API keys for a user"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """SELECT key_id, key, key_name, created_at, expires_at, description, 
+                      is_active 
+               FROM api_keys WHERE user_id = ?""",
+            (user_id,)
+        )
+        results = cursor.fetchall()
+        
+        keys = []
+        for result in results:
+            key_id, key, key_name, created_at, expires_at, description, is_active = result
+            keys.append({
+                "key_id": key_id,
+                "key": key,
+                "key_name": key_name,
+                "created_at": created_at,
+                "expires_at": expires_at,
+                "description": description,
+                "is_active": bool(is_active)
+            })
+        
+        conn.close()
+        return keys
+
+    def revoke_key(self, key_id: str, user_id: str) -> bool:
+        """Revoke an API key by setting is_active to False"""
+        # First verify the key belongs to this user
+        if not self.verify_user_key(key_id, user_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No API key found with ID: {key_id}"
+            )
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "UPDATE api_keys SET is_active = 0 WHERE key_id = ?",
+            (key_id,)
         )
         
         affected = cursor.rowcount
@@ -102,83 +224,3 @@ class KeyManager:
             return False
             
         return True
-
-    def log_usage(self, api_key: str, endpoint: str):
-        """Log API key usage"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            "INSERT INTO usage_logs (api_key, endpoint, timestamp) VALUES (?, ?, ?)",
-            (api_key, endpoint, datetime.utcnow())
-        )
-        
-        conn.commit()
-        conn.close()
-
-    def check_rate_limit(self, api_key: str) -> bool:
-        """Check if API key has exceeded its rate limit (requests per day)"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Get rate limit for the key
-        cursor.execute(
-            "SELECT rate_limit FROM api_keys WHERE key = ?",
-            (api_key,)
-        )
-        result = cursor.fetchone()
-        if not result:
-            return False
-            
-        rate_limit = result[0]
-        
-        # Count today's requests
-        today = datetime.utcnow().date()
-        cursor.execute(
-            """SELECT COUNT(*) FROM usage_logs 
-               WHERE api_key = ? 
-               AND date(timestamp) = date(?)""",
-            (api_key, today)
-        )
-        
-        count = cursor.fetchone()[0]
-        conn.close()
-        
-        return count < rate_limit
-
-    def get_key_info(self, api_key: str) -> Dict:
-        """Get detailed information about an API key"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            """SELECT created_at, expires_at, description, is_active, rate_limit 
-               FROM api_keys WHERE key = ?""",
-            (api_key,)
-        )
-        result = cursor.fetchone()
-        
-        if not result:
-            raise HTTPException(status_code=404, detail="API key not found")
-            
-        created_at, expires_at, description, is_active, rate_limit = result
-        
-        # Get usage statistics
-        cursor.execute(
-            """SELECT COUNT(*) FROM usage_logs 
-               WHERE api_key = ? 
-               AND date(timestamp) = date(?)""",
-            (api_key, datetime.utcnow().date())
-        )
-        today_usage = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        return {
-            "created_at": created_at,
-            "expires_at": expires_at,
-            "description": description,
-            "is_active": bool(is_active),
-            "rate_limit": rate_limit,
-            "today_usage": today_usage
-        } 

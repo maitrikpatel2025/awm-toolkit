@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from version import BUILD_NUMBER
+from fastapi.security import HTTPBearer
 import logging
 
 # Configure logging
@@ -13,10 +13,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Define security scheme
+security = HTTPBearer()
+
 # Import and register routers
-from routes import authenticate, transcribe_media, combine_audios, background_removal, audio_crop
+from routes import authenticate, transcribe_media, combine_audios, background_removal, audio_crop, user_routes
 
-
+app.include_router(user_routes.router)
 app.include_router(authenticate.router)
 app.include_router(transcribe_media.router)
 app.include_router(combine_audios.router)
