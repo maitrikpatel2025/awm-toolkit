@@ -15,59 +15,9 @@ class KeyManager:
         """Initialize the database with required tables"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        try:
-            # Create temporary table for new schema
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS api_keys_new (
-                    key_id TEXT PRIMARY KEY,
-                    key TEXT UNIQUE,
-                    key_name TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    created_at TIMESTAMP,
-                    expires_at TIMESTAMP,
-                    description TEXT,
-                    is_active BOOLEAN DEFAULT 1,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            ''')
-            
-            # Check if old table exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'")
-            if cursor.fetchone():
-                # Copy data from old table to new table with default values
-                cursor.execute("""
-                    INSERT INTO api_keys_new (
-                        key_id, key, key_name, user_id, created_at, expires_at, 
-                        description, is_active
-                    )
-                    SELECT 
-                        hex(randomblob(16)) as key_id,
-                        key,
-                        'Legacy Key' as key_name,
-                        'system' as user_id,
-                        created_at,
-                        expires_at,
-                        description,
-                        COALESCE(is_active, 1)
-                    FROM api_keys
-                """)
-                
-                # Drop old table
-                cursor.execute("DROP TABLE api_keys")
-                
-                # Rename new table to api_keys
-                cursor.execute("ALTER TABLE api_keys_new RENAME TO api_keys")
-            else:
-                # If no old table exists, just rename the new table
-                cursor.execute("ALTER TABLE api_keys_new RENAME TO api_keys")
-            
-            conn.commit()
-        except Exception as e:
-            print(f"Migration error: {str(e)}")
-            conn.rollback()
-        finally:
-            conn.close()
+        cursor.execute("CREATE TABLE IF NOT EXISTS api_keys (key_id TEXT PRIMARY KEY, key TEXT, key_name TEXT, user_id TEXT, created_at DATETIME, expires_at DATETIME, description TEXT, is_active INTEGER)")
+        conn.commit()
+        conn.close()
 
     def verify_user_key(self, key_id: str, user_id: str) -> bool:
         """Verify if the key belongs to the user"""
@@ -224,3 +174,12 @@ class KeyManager:
             return False
             
         return True
+
+    def get_key_user_id(self, api_key: str) -> Optional[str]:
+        """Get user_id associated with an API key"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM api_keys WHERE key = ?", (api_key,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None

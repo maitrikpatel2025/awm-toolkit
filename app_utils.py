@@ -16,13 +16,17 @@ from services.key_management import KeyManager
 
 key_manager = KeyManager()
 
+async def current_user_id(api_key: str):
+    user_id = key_manager.get_key_user_id(api_key)
+    return user_id
+
 async def verify_api_key(
     request: Request,
     x_api_key: str = Header(..., description="API Key for authentication")
 ):
     """FastAPI dependency for API key verification"""
     if not key_manager.is_key_valid(x_api_key):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Invalid API key generate new key from")
         
     return x_api_key
 
@@ -37,17 +41,17 @@ def process_queue():
         queue_time = time.time() - queue_start_time
         run_start_time = time.time()
         pid = os.getpid()
-        
         try:
             # Execute the task function
             response = await task_func()
             run_time = time.time() - run_start_time
             total_time = time.time() - queue_start_time
-
+            print(response)
             response_data = {
                 "endpoint": response[1],
                 "code": response[2],
                 "id": data.get("id"),
+                "user_id": data.get("user_id"),
                 "job_id": job_id,
                 "response": response[0] if response[2] == 200 else None,
                 "message": "success" if response[2] == 200 else response[0],
@@ -96,12 +100,15 @@ def queue_task(bypass_queue: bool = False):
         async def wrapper(request: Request, *args, **kwargs):
             job_id = str(uuid.uuid4())
             request.state.job_id = job_id
+            api_key = request.headers.get("x-api-key")
+            user_id = await current_user_id(api_key)
+            request.state.user_id = user_id
             data = {}
             for key, value in kwargs.items():
                 if hasattr(value, 'dict') and callable(value.dict):
                     data = value.dict()
                     break
-          
+            data["user_id"] = user_id
             pid = os.getpid()
             start_time = time.time()
 
@@ -115,6 +122,7 @@ def queue_task(bypass_queue: bool = False):
                             "endpoint": response[1],
                             "code": response[2],
                             "id": data.get("id"),
+                            "user_id": user_id,
                             "job_id": job_id,
                             "response": response[0] if response[2] == 200 else None,
                             "message": "success" if response[2] == 200 else response[0],
@@ -134,6 +142,7 @@ def queue_task(bypass_queue: bool = False):
                             "code": 500,
                             "message": str(e),
                             "job_id": job_id,
+                            "user_id": user_id,
                             "pid": pid,
                             "queue_id": queue_id,
                             "queue_length": task_queue.qsize(),
@@ -148,12 +157,13 @@ def queue_task(bypass_queue: bool = False):
                             "code": 429,
                             "id": data.get("id"),
                             "job_id": job_id,
+                            "user_id": user_id,
                             "message": f"MAX_QUEUE_LENGTH ({MAX_QUEUE_LENGTH}) reached",
                             "pid": pid,
                             "queue_id": queue_id,
                             "queue_length": task_queue.qsize(),
                             "build_number": BUILD_NUMBER
-                        }
+                        }               
                     )
                 
                 task_queue.put((job_id, data, lambda: func(request, *args, **kwargs), start_time))
@@ -167,6 +177,7 @@ def queue_task(bypass_queue: bool = False):
                         "message": "processing",
                         "pid": pid,
                         "queue_id": queue_id,
+                        "user_id": user_id,
                         "max_queue_length": MAX_QUEUE_LENGTH if MAX_QUEUE_LENGTH > 0 else "unlimited",
                         "queue_length": task_queue.qsize(),
                         "build_number": BUILD_NUMBER

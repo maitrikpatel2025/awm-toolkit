@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.concurrency import run_in_threadpool
-from app_utils import  verify_api_key, queue_task
+from app_utils import  verify_api_key, queue_task, current_user_id
 from models.combine_audio_request import CombineAudioRequest
 from services.ffmpeg_toolkit import process_audio_combination
 from services.cloud_storage import upload_file
@@ -22,6 +22,7 @@ async def combine_audios(
     api_key: str = Depends(verify_api_key)
 ):
     job_id = request.state.job_id
+
     logger.info(f"Job {job_id}: Received combine-audios request for {len(combine_audio_request.audio_urls)} audio files")
     
     try:

@@ -7,6 +7,10 @@ from routes.user_routes import get_current_user_from_token
 router = APIRouter()
 key_manager = KeyManager()
 
+async def current_user_id(api_key: str):
+    user_id = key_manager.get_key_user_id(api_key)
+    return user_id
+
 @router.get("/authenticate",
     summary="Verify API key",
     description="Endpoint to verify if the provided API key is valid",
