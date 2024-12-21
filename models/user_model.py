@@ -2,6 +2,12 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from uuid import UUID, uuid4
+from enum import Enum
+
+class Role(str, Enum):
+    ADMIN = "admin"
+    USER = "user"
+    SUPER_ADMIN = "super_admin"
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -13,9 +19,11 @@ class UserBase(BaseModel):
     profile_picture_url: Optional[str] = None
     is_active: bool = True
     is_verified: bool = False
-
+    role: Role = Role.USER
+    
 class UserCreate(UserBase):
     password: str
+    role: Optional[Role] = None
 
     class Config:
         json_schema_extra = {
@@ -40,6 +48,7 @@ class UserUpdate(BaseModel):
     phone_number: Optional[str] = None
     bio: Optional[str] = None
     profile_picture_url: Optional[str] = None
+    role: Optional[Role] = None
 
     class Config:
         json_schema_extra = {
@@ -50,7 +59,8 @@ class UserUpdate(BaseModel):
                 "last_name": "Doe",
                 "phone_number": "+1234567890",
                 "bio": "Updated bio information",
-                "profile_picture_url": "https://example.com/new-profile.jpg"
+                "profile_picture_url": "https://example.com/new-profile.jpg",
+                "role": "user"
             }
         }
 
@@ -78,7 +88,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     created_at: datetime
     updated_at: datetime
-
+    
     class Config:
         json_schema_extra = {
             "example": {
